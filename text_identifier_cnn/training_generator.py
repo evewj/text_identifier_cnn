@@ -49,7 +49,7 @@ def find_order_pts(points):
 def parse_image(path):
     img = cv2.imread(path,cv2.IMREAD_COLOR)
     hsv_frame = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    #cv2.imshow('hsv', hsv_frame)
+    cv2.imshow('hsv', hsv_frame)
     shape = (1280, 720)
     shape_3d = (1280, 720, 3)
 
@@ -57,7 +57,7 @@ def parse_image(path):
     normal_upper_hsv = np.array([141,35,125])
 
     darker_lower_hsv = np.array([0,0,148])
-    darker_upper_hsv = np.array([186,18,202])
+    darker_upper_hsv = np.array([186,18,206])
 
     img_mask_1 = cv2.inRange(hsv_frame, normal_lower_hsv, normal_upper_hsv)
     img_mask_1 = cv2.resize(img_mask_1, shape )
@@ -70,11 +70,23 @@ def parse_image(path):
     img = cv2.resize(img, shape)
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    gray = cv2.bilateralFilter(img_mask, 25, 300, 300)
+    #gray = cv2.bilateralFilter(img_mask, 25, 100, 100) #300,300
+    gray = cv2.GaussianBlur(img_mask,(21,21),0)
+    t, gray = cv2.threshold(gray, 127,255,cv2.THRESH_BINARY)
+    print(gray.shape)
     cv2.imshow('mask', gray)
     edged = cv2.Canny(gray, 30, 200)
-    #cv2.imshow('edges', edged )
-    contours = cv2.findContours(edged.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    cv2.imshow('edges', edged )
+
+    
+    im2, contours, hierarchy = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    print(contours)
+    
+    cv2.drawContours(img, contours, -1, (0, 255, 0), 3) 
+
+    cv2.imshow('m',img)
+    cv2.waitKey(0)
+    
     contours = sorted(contours, key = cv2.contourArea, reverse = True)[:10]
     screenCnt1 = None
 
@@ -133,7 +145,8 @@ def parse_image(path):
 PATH = os.path.dirname(os.path.abspath(__file__))+'/Training data/*'
 OUT_PATH = os.path.dirname(os.path.abspath(__file__))+ '/Training output/Image_'
 files = glob.glob(PATH)
-print(files)
+print(len(files))
+
 count = 0
 for file in files:
     letters = parse_image(file)
