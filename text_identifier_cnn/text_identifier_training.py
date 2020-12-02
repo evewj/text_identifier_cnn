@@ -39,7 +39,7 @@ def refresh_file_structure():
     dir = folder + char
     os.mkdir(dir)
 
-refresh_file_structure()
+#refresh_file_structure()
 
 def rotate_image(image, angle, scale):
   path =  os.path.dirname(os.path.abspath(__file__))+ "/content/"
@@ -53,6 +53,8 @@ def rotate_image(image, angle, scale):
 
 def add_random_plates(num_plates, blur_max=1):
   for i in range(0, num_plates):
+    if i % 1000 == 0:
+        print(i)
 
     # Pick two random letters
     plate_alpha = ""
@@ -74,7 +76,64 @@ def add_custom_plates(plate_amount, plate_alpha, plate_num, blur_max=1, noise_ma
     add_plate(plate_alpha, plate_num, blur_amount)
 
 
-def add_plate(plate_alpha, plate_num, blur_amount=1, noise_amount = 0, darkness_amount = 0.25,  rotation_threshold = 20, scale_threshold = 0.25):
+def perspectiveDistortion(img):
+  left_slant = False if np.random.rand() > 0.5 else True
+  min_rows = 30
+  min_cols = 60 + 30 * np.random.rand()
+  row_height = min_rows + 30 * np.random.rand()
+  column_width = 40
+  left_shift = column_width * np.random.rand()
+  right_shift = column_width * np.random.rand()
+  left_boost = 10 * np.random.rand()
+  right_boost = 10 * np.random.rand()
+
+  #column row
+
+  if left_slant:
+    p0 = np.array([0,0])
+    p1 = np.array([min_cols, 0])
+    p2 = np.array([left_shift + min_cols + right_shift, row_height+right_boost])
+    p3 = np.array([left_shift, row_height+left_boost])
+    # p0 = np.array([0,0])
+    # p1 = np.array([left_shift, row_height+left_boost])
+    # p2 = np.array([left_shift + min_cols + right_shift, row_height+right_boost])
+    # p3 = np.array([min_cols, 0])
+
+  else:
+    p0 = np.array([left_shift,0])
+    p1 = np.array([left_shift + min_cols + right_shift,0])
+    p2 = np.array([min_cols, row_height+right_boost])
+    p3 = np.array([0,row_height+left_boost])
+
+    # np.array([row_height+left_boost,0])
+    # p2 = np.array([row_height+right_boost, min_cols])
+    # p3 = np.array([0, left_shift + min_cols + right_shift])
+    # p0 = np.array([0,left_shift])
+    # p1 = np.array([row_height+left_boost,0])
+    # p2 = np.array([row_height+right_boost, min_cols])
+    # p3 = np.array([0, left_shift + min_cols + right_shift])
+
+  original_pts = np.float32([[0,0],[599,0],[599, 297],[0,297]])
+  transfrom_pts = np.float32([p0,p1,p2,p3])
+  #transfrom_pts = np.float32([[0,0],[300,0],[300,100],[0,298]])
+
+  # for pt in original_pts:
+  #   cv2.circle(img, pt, 5, (255,255,255))
+
+  #cv2_imshow()
+
+  M = cv2.getPerspectiveTransform(original_pts, transfrom_pts)
+  transformed = cv2.warpPerspective(img, M, (600,298))
+  transformed =  cv2.GaussianBlur(transformed,(3,3),0)
+  #cv2_imshow(transformed)
+  M_i = cv2.getPerspectiveTransform(transfrom_pts, original_pts)
+  returned = cv2.GaussianBlur(cv2.warpPerspective(transformed,M_i, (600,298)),(11,11),0)
+  returned = returned + np.random.randint(-5, high=6,size=returned.shape)
+  returned = np.clip(returned,0,255)
+  return returned
+
+
+def add_plate(plate_alpha, plate_num, blur_amount=1, noise_amount = 0, darkness_amount = 0.30,  rotation_threshold = 10, scale_threshold = 0.4):
     path =  os.path.dirname(os.path.abspath(__file__))+ "/content/"
 
     # Write plate to image
@@ -93,25 +152,45 @@ def add_plate(plate_alpha, plate_num, blur_amount=1, noise_amount = 0, darkness_
 
     # Convert back to OpenCV image and save
     blank_plate = np.array(blank_plate_pil)
+    plate = perspectiveDistortion(blank_plate)*random.uniform(darkness_amount, 1)
 
-    char1 = blank_plate[85:235,50:150]
-    char2 = blank_plate[85:235,150:250]
-    char3 = blank_plate[85:235,350:450]
-    char4 = blank_plate[85:235,450:550]
+    offset_y = randint(-10, 10)
+    offset_x = randint(-10, 10)
 
-    angle = random.uniform(-1*rotation_threshold, rotation_threshold)
-    scale = random.uniform(scale_threshold, 1)
+    scale = random.uniform(0.9, 1.6)
 
-    blur_amount = int(blur_amount*scale) +1
-    char1 = rotate_image(char1, angle, scale)*random.uniform(darkness_amount, 1)
-    char2 = rotate_image(char2, angle, scale)*random.uniform(darkness_amount, 1)
-    char3 = rotate_image(char3, angle, scale)*random.uniform(darkness_amount, 1)
-    char4 = rotate_image(char4, angle, scale)*random.uniform(darkness_amount, 1)
+    height = 150
+    width = 100
+    coords = [[160,100],[160,200],[160,400],[160,500]]
+    s_height = int(scale*height)
+    s_width = int(scale*width)
+    transformed_coords = [[c[0]+offset_y,c[1]+offset_x] for c in coords]
+    scaled_coords = [[c[0]-s_height/2, c[0]+s_height/2, c[1]-s_width/2, c[1]+s_width/2] for c in transformed_coords]
+    c= scaled_coords
 
-    char1 = cv2.blur(char1,(blur_amount,blur_amount))
-    char2 = cv2.blur(char2,(blur_amount,blur_amount))
-    char3 = cv2.blur(char3,(blur_amount,blur_amount))
-    char4 = cv2.blur(char4,(blur_amount,blur_amount))
+    char1 = plate[c[0][0]:c[0][1],c[0][2]:c[0][3]]
+    char2 = plate[c[1][0]:c[1][1],c[1][2]:c[1][3]]
+    char3 = plate[c[2][0]:c[2][1],c[2][2]:c[2][3]]
+    char4 = plate[c[3][0]:c[3][1],c[3][2]:c[3][3]]
+
+    char1 = cv2.resize(char1, (100, 150))
+    char2 = cv2.resize(char2, (100, 150))
+    char3 = cv2.resize(char3, (100, 150))
+    char4 = cv2.resize(char4, (100, 150))
+
+    #angle = random.uniform(-1*rotation_threshold, rotation_threshold)
+
+
+    #blur_amount = int(blur_amount*scale) +1
+    #char1 = rotate_image(char1, angle, 1.0+0.15/angle)*random.uniform(darkness_amount, 1)
+    #char2 = rotate_image(char2, angle, 1.0+0.15/angle)*random.uniform(darkness_amount, 1)
+    #char3 = rotate_image(char3, angle, 1.0+0.15/angle)*random.uniform(darkness_amount, 1)
+    #char4 = rotate_image(char4, angle, 1.0+0.15/angle)*random.uniform(darkness_amount, 1)
+
+    #char1 = cv2.blur(char1,(blur_amount,blur_amount))
+    #char2 = cv2.blur(char2,(blur_amount,blur_amount))
+    #char3 = cv2.blur(char3,(blur_amount,blur_amount))
+    #char4 = cv2.blur(char4,(blur_amount,blur_amount))
 
     # Write license plate to file
     cv2.imwrite(os.path.join(path + "pictures/" + plate_alpha[0] + "/",
@@ -127,12 +206,12 @@ def add_plate(plate_alpha, plate_num, blur_amount=1, noise_amount = 0, darkness_
                              "plate_{}{}.png".format(plate_alpha, plate_num)),
                              char4)
 
-add_random_plates(10000, blur_max=35)
+#add_random_plates(15000, blur_max=15)
 
 
 PATH = os.path.dirname(os.path.abspath(__file__))+ "/content/pictures/"
 
-alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
 char_lookup = {}
 count = 0
@@ -159,7 +238,9 @@ np.random.shuffle(all_dataset)
 X_dataset_orig = np.array([data[0] for data in all_dataset[:]])
 Y_dataset_orig = np.array([[data[1]] for data in all_dataset]).T
 
-NUMBER_OF_LABELS = 36
+NUMBER_OF_LABELS = 26
+#NUMBER_OF_LABELS = 10
+#NUMBER_OF_LABELS = 36
 CONFIDENCE_THRESHOLD = 0.01
 
 def convert_to_one_hot(Y, C):
@@ -193,7 +274,9 @@ conv_model.add(layers.MaxPooling2D((2, 2)))
 conv_model.add(layers.Flatten())
 conv_model.add(layers.Dropout(0.5))
 conv_model.add(layers.Dense(512, activation='relu'))
-conv_model.add(layers.Dense(36, activation='softmax'))
+conv_model.add(layers.Dense(26, activation='softmax'))
+#conv_model.add(layers.Dense(10, activation='softmax'))
+#conv_model.add(layers.Dense(36, activation='softmax'))
 
 conv_model.summary()
 
@@ -207,7 +290,8 @@ history_conv = conv_model.fit(X_dataset, Y_dataset,
                               epochs=20,
                               batch_size=16)
 
-conv_model.save(os.path.dirname(os.path.abspath(__file__)) + '/my_model')
+#conv_model.save(os.path.dirname(os.path.abspath(__file__)) + '/number_model')
+conv_model.save(os.path.dirname(os.path.abspath(__file__)) + '/letter_model')
 
 plt.plot(history_conv.history['loss'])
 plt.plot(history_conv.history['val_loss'])
@@ -225,7 +309,8 @@ plt.xlabel('epoch')
 plt.legend(['train accuracy', 'val accuracy'], loc='upper left')
 plt.show()
 
-saved_model = models.load_model(os.path.dirname(os.path.abspath(__file__)) + '/my_model')
+#saved_model = models.load_model(os.path.dirname(os.path.abspath(__file__)) + '/number_model')
+saved_model = models.load_model(os.path.dirname(os.path.abspath(__file__)) + '/letter_model')
 # Display images in the training data set.
 def displayImage(index):
   img = X_dataset[index]
